@@ -33,10 +33,11 @@
 -   🔢 **Multiple Numbers:** You can bundle more than one number into a single ID, and then decode the ID back into the same set of numbers.
 -   👁 **"Eye-safe":** Sqids makes sure that the IDs it generates do not contain common profanity, so you can safely use these IDs where end-users can see them (e.g. in URLs).
 -   🤹‍♀️ **Randomized Output:** Encoding sequential numbers (1, 2, 3...) yields completely different-looking IDs.
--   💪 **Supports All Integral Types:** Powered by .NET 7's [generic math](https://learn.microsoft.com/en-us/dotnet/standard/generics/math) — you could use Sqids to encode/decode numbers of any integral numeric type in .NET, including `int`, `long`, `ulong`, `byte`, etc.
+-   💪 **Supports All Integral Types:** Powered by .NET 7's [generic math](https://learn.microsoft.com/en-us/dotnet/standard/generics/math) — you could use Sqids to encode/decode numbers of any integral numeric type in .NET, including `int`, `long`, `ulong`, `byte`, etc. This fork adds support to all integral types for legacy frameworks whith few changes as possible.
 -   ⚡ **Blazingly Fast:** With an optimized span-based implementation that minimizes memory allocation and maximizes performance.
 -   🔍 **Meticulously Tested:** Sqids has a comprehensive test suite that covers numerous edge cases, so you can expect a bug-free experience.
 -   ✅ **CLS-compliant:** Sqids can be used with any .NET language, not just C#. You can use Sqids just as easily with F#, for example.
+-   ❗ **ulong support:** Encoding UInt64/ulong is supported in legacy frameworks via a non CLS-compliant overload.
 
 ## Getting Started
 
