@@ -135,7 +135,7 @@ string idUL = sqids.Encode(ulong.MaxValue, 1); // Non CLS-Compliant
 
 > **Note**
 > The non-suffixed `Decode()` method works exactly the same as in previous versions by decoding to `int` numbers. 
-> This makes this update a drop-in replacement, no chances needed to your current codebase unless you want to use other integral types in legacy frameworks.
+> This makes this update a drop-in replacement, no changes needed to your current codebase unless you want to use other integral types in legacy frameworks.
 
 ## Customizations:
 
