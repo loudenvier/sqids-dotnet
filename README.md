@@ -33,11 +33,11 @@
 -   🔢 **Multiple Numbers:** You can bundle more than one number into a single ID, and then decode the ID back into the same set of numbers.
 -   👁 **"Eye-safe":** Sqids makes sure that the IDs it generates do not contain common profanity, so you can safely use these IDs where end-users can see them (e.g. in URLs).
 -   🤹‍♀️ **Randomized Output:** Encoding sequential numbers (1, 2, 3...) yields completely different-looking IDs.
--   💪 **Supports All Integral Types:** Powered by .NET 7's [generic math](https://learn.microsoft.com/en-us/dotnet/standard/generics/math) — you could use Sqids to encode/decode numbers of any integral numeric type in .NET, including `int`, `long`, `ulong`, `byte`, etc. This fork adds support to all integral types for legacy frameworks whith few changes as possible.
+-   💪 **Supports All Integral Types:** Powered by .NET 7's [generic math](https://learn.microsoft.com/en-us/dotnet/standard/generics/math) and incremental source-generation on legacy frameworks — you could use Sqids to encode/decode numbers of any integral numeric type in .NET, including `int`, `long`, `ulong`, `byte`, etc.
 -   ⚡ **Blazingly Fast:** With an optimized span-based implementation that minimizes memory allocation and maximizes performance.
 -   🔍 **Meticulously Tested:** Sqids has a comprehensive test suite that covers numerous edge cases, so you can expect a bug-free experience.
 -   ✅ **CLS-compliant:** Sqids can be used with any .NET language, not just C#. You can use Sqids just as easily with F#, for example.
--   ❗ **ulong support:** Encoding UInt64/ulong is supported in legacy frameworks via a non CLS-compliant overload.
+-   ❗ **Legacy support:** Encoding UInt64/ulong (and other non CLS-compliant) types is supported via source-generated overloads. 
 
 ## Getting Started
 
@@ -69,7 +69,7 @@ var sqids = new SqidsEncoder<int>();
 > **Note**
 > You can use any [integral numeric type](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/integral-numeric-types) (e.g. `long`, `byte`, `short`, etc.) as the type argument. `int` is just the most common one, but if you need to encode/decode larger numbers, for example, you could use `long`/`ulong` instead.
 
-If you're targeting an older framework than .NET 7, `SqidsEncoder` only supports `int`, and there is no generic type parameter you need to supply, so just:
+If you're targeting an older framework than .NET 7, `SqidsEncoder` supports all integral types via overloads and suffixed methods (`DecodeByte`, `DecodeULong` etc.), and there is no generic type parameter you need to supply, so just:
 
 ```cs
 var sqids = new SqidsEncoder();
@@ -91,6 +91,51 @@ var numbers = sqids.Decode(id); // [1, 2, 3]
 
 > **Note**
 > Sqids also preserves the order when encoding/decoding multiple numbers.
+
+#### Legacy support for all integral numeric types
+
+You can decode and encode any integral numeric type even when targeting frameworks bellow .NET 7 by using source-generated overloads and suffixed methods.
+
+Encoding a single number will call the `long`-based, CLS-Compliant `Encode` overload. Only when encoding an `ulong` value will it choose the non CSL-Compliant method.
+
+Decoding requires you to choose a specific suffixed `DecodeXXX` method which returns the desired type.
+
+```cs
+var sqids = new SqidsEncoder();
+
+// Single numbers
+string idB  = sqids.Encode(byte.MaxValue);
+string idSB = sqids.Encode(sbyte.MaxValue); 
+string idS  = sqids.Encode(short.MaxValue);
+string idUS = sqids.Encode(ushort.MaxValue); // Non CLS-Compliant
+string idI  = sqids.Encode(int.MaxValue);
+string idUI = sqids.Encode(uint.MaxValue); // Non CLS-Compliant
+string idL  = sqids.Encode(long.MaxValue);
+string idUL = sqids.Encode(ulong.MaxValue); // Non CLS-Compliant
+byte   bID  = sqids.DecodeByte(idB).Single();
+sbyte  sbID = sqids.DecodeSByte(idSB).Single(); // Non CLS-Compliant
+short  sID  = sqids.DecodeShort(idS).Single();
+ushort usID = sqids.DecodeUShort(idUS).Single(); // Non CLS-Compliant
+int    iID  = sqids.Decode(idI).Single(); // or DecodeInt() 
+uint   uiID = sqids.DecodeUInt(idUI).Single(); // Non CLS-Compliant
+long   lID  = sqids.DecodeLong(idL).Single();
+ulong  ulID = sqids.DecodeULong(idUL).Single(); // Non CLS-Compliant
+
+// Multiple numbers (showing different ways to call each overload)
+string idB  = sqids.Encode((byte[])[byte.MaxValue, 1]);
+string idB2 = sqids.Encode(byte.MaxValue, (byte)1);
+string idSB = sqids.Encode(sbyte.MaxValue, (sbyte)1); // Non CLS-Compliant
+string idS  = sqids.Encode(short.MaxValue, (short)1);
+string idUS = sqids.Encode(ushort.MaxValue, (ushort)1); // Non CLS-Compliant
+string idI  = sqids.Encode(int.MaxValue, 1);
+string idUI = sqids.Encode(uint.MaxValue, 1); // Non CLS-Compliant
+string idL  = sqids.Encode(long.MaxValue, 1);
+string idUL = sqids.Encode(ulong.MaxValue, 1); // Non CLS-Compliant
+```
+
+> **Note**
+> The non-suffixed `Decode()` method works exactly the same as in previous versions by decoding to `int` numbers. 
+> This makes this update a drop-in replacement, no chances needed to your current codebase unless you want to use other integral types in legacy frameworks.
 
 ## Customizations:
 

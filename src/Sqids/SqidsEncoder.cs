@@ -1,5 +1,9 @@
 #if NET7_0_OR_GREATER
 using System.Numerics;
+using System.Runtime.CompilerServices;
+#else
+using System.Runtime.CompilerServices;
+using T = System.UInt64; // Alias used to unify .NET 7+ and legacy code
 #endif
 
 namespace Sqids;
@@ -18,7 +22,8 @@ public sealed class SqidsEncoder<T> where T : unmanaged, IBinaryInteger<T>, IMin
 /// <summary>
 /// The Sqids encoder/decoder. This is the main class.
 /// </summary>
-public sealed class SqidsEncoder
+[GenerateSqidsLegacyOverloads] // Will use source generation to add legacy overloads when targetting .NET Framework 4.6.1+ and up to .NET 6
+public sealed partial class SqidsEncoder
 #endif
 {
 	private const int MinAlphabetLength = 3;
@@ -33,14 +38,7 @@ public sealed class SqidsEncoder
 	/// <summary>
 	/// Initializes a new instance of <see cref="SqidsEncoder{T}" /> with the default options.
 	/// </summary>
-#else
-	/// <summary>
-	/// Initializes a new instance of <see cref="SqidsEncoder" /> with the default options.
-	/// </summary>
-#endif
 	public SqidsEncoder() : this(new()) { }
-
-#if NET7_0_OR_GREATER
 	/// <summary>
 	/// Initializes a new instance of <see cref="SqidsEncoder{T}" /> with custom options.
 	/// </summary>
@@ -51,7 +49,12 @@ public sealed class SqidsEncoder
 	/// </param>
 	/// <exception cref="T:System.ArgumentNullException" />
 	/// <exception cref="T:System.ArgumentOutOfRangeException" />
+	public SqidsEncoder(SqidsOptions options)
 #else
+	/// <summary>
+	/// Initializes a new instance of <see cref="SqidsEncoder" /> with the default options.
+	/// </summary>
+	public SqidsEncoder() : this(new SqidsOptions()) { }
 	/// <summary>
 	/// Initializes a new instance of <see cref="SqidsEncoder" /> with custom options.
 	/// </summary>
@@ -62,8 +65,8 @@ public sealed class SqidsEncoder
 	/// </param>
 	/// <exception cref="T:System.ArgumentNullException" />
 	/// <exception cref="T:System.ArgumentOutOfRangeException" />
-#endif
 	public SqidsEncoder(SqidsOptions options)
+#endif
 	{
 		_ = options ?? throw new ArgumentNullException(nameof(options));
 		_ = options.Alphabet ?? throw new ArgumentNullException(nameof(options.Alphabet));
@@ -116,12 +119,13 @@ public sealed class SqidsEncoder
 			blockList.Add(w);
 		}
 
-		_blockList = blockList.ToArray(); // NOTE: Arrays are faster to iterate than HashSets, so we construct an array here.
+		_blockList = [..blockList]; // NOTE: Arrays are faster to iterate than HashSets, so we construct an array here.
 
 		_alphabet = options.Alphabet.ToCharArray();
 		ConsistentShuffle(_alphabet);
 	}
 
+#if NET7_0_OR_GREATER
 	/// <summary>
 	/// Encodes a single number into a Sqids ID.
 	/// </summary>
@@ -129,31 +133,19 @@ public sealed class SqidsEncoder
 	/// <returns>A string containing the encoded ID.</returns>
 	/// <exception cref="T:System.ArgumentOutOfRangeException">If the number passed is smaller than 0 (i.e. negative).</exception>
 	/// <exception cref="T:System.ArgumentException">If the encoding reaches maximum re-generation attempts due to the blocklist.</exception>
-#if NET7_0_OR_GREATER
 	public string Encode(T number)
-#else
-	public string Encode(int number)
-#endif
 	{
 #if NET8_0_OR_GREATER
 		ArgumentOutOfRangeException.ThrowIfLessThan(number, T.Zero, nameof(number));
 #else
-#if NET7_0
 		if (number < T.Zero)
-#else
-		if (number < 0)
-#endif
 			throw new ArgumentOutOfRangeException(
 				nameof(number),
 				"Encoding is only supported for zero and positive numbers."
 			);
 
-		return Encode(stackalloc[] { number }); // NOTE: We use `stackalloc` here in order not to incur the cost of allocating an array on the heap, since we know the array will only have one element, we can use `stackalloc` safely.
 #endif
-
-#if NET8_0_OR_GREATER
-		return Encode([number]);
-#endif
+		return EncodeCore([number]);  // NOTE: Collection initialization takes care of `stackalloc` intricacies
 	}
 
 	/// <summary>
@@ -163,11 +155,7 @@ public sealed class SqidsEncoder
 	/// <returns>A string containing the encoded IDs, or an empty string if the array passed is empty.</returns>
 	/// <exception cref="T:System.ArgumentOutOfRangeException">If any of the numbers passed is smaller than 0 (i.e. negative).</exception>
 	/// <exception cref="T:System.ArgumentException">If the encoding reaches maximum re-generation attempts due to the blocklist.</exception>
-#if NET7_0_OR_GREATER
 	public string Encode(params T[] numbers)
-#else
-	public string Encode(params int[] numbers)
-#endif
 	{
 		if (numbers.Length == 0)
 			return string.Empty;
@@ -176,18 +164,14 @@ public sealed class SqidsEncoder
 #if NET8_0_OR_GREATER
 			ArgumentOutOfRangeException.ThrowIfLessThan(number, T.Zero, nameof(numbers));
 #else
-#if NET7_0
 			if (number < T.Zero)
-#else
-			if (number < 0)
-#endif
 				throw new ArgumentOutOfRangeException(
 					nameof(numbers),
 					"Encoding is only supported for zero and positive numbers."
 				);
 #endif
 
-		return Encode(numbers.AsSpan());
+		return EncodeCore(numbers.AsSpan());
 	}
 
 	/// <summary>
@@ -197,20 +181,74 @@ public sealed class SqidsEncoder
 	/// <returns>A string containing the encoded IDs, or an empty string if the `IEnumerable` passed is empty.</returns>
 	/// <exception cref="T:System.ArgumentOutOfRangeException">If any of the numbers passed is smaller than 0 (i.e. negative).</exception>
 	/// <exception cref="T:System.ArgumentException">If the encoding reaches maximum re-generation attempts due to the blocklist.</exception>
-#if NET7_0_OR_GREATER
-	public string Encode(IEnumerable<T> numbers) =>
-#else
-	public string Encode(IEnumerable<int> numbers) =>
-#endif
-		Encode(numbers.ToArray());
+	public string Encode(IEnumerable<T> numbers) => Encode([.. numbers]);
 
-	// TODO: Consider using `ArrayPool` if possible
-#if NET7_0_OR_GREATER
-	private string Encode(ReadOnlySpan<T> numbers, int increment = 0)
+	/// <summary>
+	/// Decodes an ID into numbers.
+	/// </summary>
+	/// <param name="id">The encoded ID.</param>
+	/// <returns>
+	/// An array containing the decoded number(s) (it would contain only one element
+	/// if the ID represents a single number); or an empty array if the input ID is null,
+	/// empty, or includes characters not found in the alphabet.
+	/// </returns>
+	public IReadOnlyList<T> Decode(ReadOnlySpan<char> id) => DecodeCore(id);
+
 #else
-	private string Encode(ReadOnlySpan<int> numbers, int increment = 0)
+	// LEGACY API (Minimal overloads accepting any integral type and converting to ulong/"T")
+
+	// Note: Overloads are source generated in a partial class.
+	//       Since we use params[] arrays for the Encode methods, we don't need overloads for single values
+
+	// Encoding/decoding overloads for int are kept here for "readability" purposes.
+
+	/// <summary>Encodes one or more numbers into a Sqids ID.</summary>
+	/// <param name="numbers">The number or numbers to encode.</param>
+	/// <returns>A string containing the encoded IDs, or an empty string if the `IEnumerable` passed is empty.</returns>
+	/// <exception cref="T:System.ArgumentOutOfRangeException">If any of the numbers passed is smaller than 0 (i.e. negative).</exception>
+	/// <exception cref="T:System.ArgumentException">If the encoding reaches maximum re-generation attempts due to the blocklist.</exception>
+	public string Encode(params int[] numbers) => EncodeCore([.. numbers.Select(n => (T)Check(n))]);
+
+	/// <summary>Encodes a collection of numbers into a Sqids ID.</summary>
+	/// <param name="numbers">The numbers to encode.</param>
+	/// <returns>A string containing the encoded IDs, or an empty string if the `IEnumerable` passed is empty.</returns>
+	/// <exception cref="T:System.ArgumentOutOfRangeException">If any of the numbers passed is smaller than 0 (i.e. negative).</exception>
+	/// <exception cref="T:System.ArgumentException">If the encoding reaches maximum re-generation attempts due to the blocklist.</exception>
+	public string Encode(IEnumerable<int> numbers) => EncodeCore([.. numbers.Select(n => (T)Check(n))]);
+
+	// For backwards compatibility, the default Decode methods still return int lists
+
+	/// <summary>Decodes an ID into numbers.</summary>
+	/// <param name="id">The encoded ID.</param>
+	/// <returns>
+	/// An array containing the decoded number(s) (it would contain only one element
+	/// if the ID represents a single number); or an empty array if the input ID is null,
+	/// empty, or includes characters not found in the alphabet.
+	/// </returns>
+	public IReadOnlyList<int> Decode(ReadOnlySpan<char> id) => [..DecodeCore(id).Select(i => (int)i)];
+
+	/// <summary>Decodes an ID into numbers.</summary>
+	/// <param name="id">The encoded ID.</param>
+	/// <returns>
+	/// An array containing the decoded number(s) (it would contain only one element
+	/// if the ID represents a single number); or an empty array if the input ID is null,
+	/// empty, or includes characters not found in the alphabet.
+	/// </returns>
+	public IReadOnlyList<int> Decode(string id) => [..DecodeCore(id.AsSpan()).Select(i => (int)i)];
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private static long Check(long n) {
+		if (n < 0) throw new ArgumentOutOfRangeException(nameof(n), "Encoding is only supported for zero and positive numbers.");
+		return n;
+	}
 #endif
+
+	// Encode/DecodeCore shares the same logic for legacy and modern (.NET 7+) implementations
+	private string EncodeCore(ReadOnlySpan<T> numbers, int increment = 0)
 	{
+		if (numbers.Length == 0)
+			return string.Empty;
+
 		if (increment > _alphabet.Length)
 			throw new ArgumentException("Reached max attempts to re-generate the ID.");
 
@@ -219,8 +257,9 @@ public sealed class SqidsEncoder
 #if NET7_0_OR_GREATER
 			offset += _alphabet[int.CreateChecked(numbers[i] % T.CreateChecked(_alphabet.Length))] + i;
 #else
-			offset += _alphabet[numbers[i] % _alphabet.Length] + i;
+			offset += _alphabet[(int)(numbers[i] % (ulong)_alphabet.Length)] + i;
 #endif
+
 		offset = (numbers.Length + offset) % _alphabet.Length;
 		offset = (offset + increment) % _alphabet.Length;
 
@@ -268,40 +307,23 @@ public sealed class SqidsEncoder
 		string result = builder.ToString();
 
 		if (IsBlockedId(result.AsSpan()))
-			result = Encode(numbers, increment + 1);
+			result = EncodeCore(numbers, increment + 1);
 
 		return result;
 	}
 
-	/// <summary>
-	/// Decodes an ID into numbers.
-	/// </summary>
-	/// <param name="id">The encoded ID.</param>
-	/// <returns>
-	/// An array containing the decoded number(s) (it would contain only one element
-	/// if the ID represents a single number); or an empty array if the input ID is null,
-	/// empty, or includes characters not found in the alphabet.
-	/// </returns>
-#if NET7_0_OR_GREATER
-	public IReadOnlyList<T> Decode(ReadOnlySpan<char> id)
+#if NET8_0_OR_GREATER
+	private List<T> DecodeCore(ReadOnlySpan<char> id)
 #else
-	public IReadOnlyList<int> Decode(ReadOnlySpan<char> id)
+	private IReadOnlyList<T> DecodeCore(ReadOnlySpan<char> id)
 #endif
 	{
 		if (id.IsEmpty)
-#if NET7_0_OR_GREATER
-			return Array.Empty<T>();
-#else
-			return Array.Empty<int>();
-#endif
+			return [];
 
 		foreach (char c in id)
 			if (!_alphabet.Contains(c))
-#if NET7_0_OR_GREATER
-				return Array.Empty<T>();
-#else
-				return Array.Empty<int>();
-#endif
+				return [];
 
 		var alphabetSpan = _alphabet.AsSpan();
 
@@ -317,12 +339,7 @@ public sealed class SqidsEncoder
 		alphabetTemp.Reverse();
 
 		id = id[1..]; // NOTE: Exclude the prefix
-
-#if NET7_0_OR_GREATER
 		var result = new List<T>();
-#else
-		var result = new List<int>();
-#endif
 		while (!id.IsEmpty)
 		{
 			char separator = alphabetTemp[0];
@@ -344,20 +361,6 @@ public sealed class SqidsEncoder
 
 		return result;
 	}
-
-	// NOTE: Implicit `string` => `Span<char>` conversion was introduced in .NET Standard 2.1 (see https://learn.microsoft.com/en-us/dotnet/api/system.string.op_implicit), which means without this overload, calling `Decode` with a string on versions older than .NET Standard 2.1 would require calling `.AsSpan()` on the string, which is cringe.
-#if NETSTANDARD2_0
-	/// <summary>
-	/// Decodes an ID into numbers.
-	/// </summary>
-	/// <param name="id">The encoded ID.</param>
-	/// <returns>
-	/// An array containing the decoded number(s) (it would contain only one element
-	/// if the ID represents a single number); or an empty array if the input ID is null,
-	/// empty, or includes characters not found in the alphabet.
-	/// </returns>
-	public IReadOnlyList<int> Decode(string id) => Decode(id.AsSpan());
-#endif
 
 	private bool IsBlockedId(ReadOnlySpan<char> id)
 	{
@@ -383,6 +386,7 @@ public sealed class SqidsEncoder
 	}
 
 	// NOTE: Shuffles a span of characters in place. The shuffle produces consistent results.
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	private static void ConsistentShuffle(Span<char> chars)
 	{
 		for (int i = 0, j = chars.Length - 1; j > 0; i++, j--)
@@ -392,11 +396,7 @@ public sealed class SqidsEncoder
 		}
 	}
 
-#if NET7_0_OR_GREATER
 	private static ReadOnlySpan<char> ToId(T num, ReadOnlySpan<char> alphabet)
-#else
-	private static ReadOnlySpan<char> ToId(int num, ReadOnlySpan<char> alphabet)
-#endif
 	{
 		var id = new StringBuilder();
 		var result = num;
@@ -408,31 +408,30 @@ public sealed class SqidsEncoder
 			result /= T.CreateChecked(alphabet.Length);
 		} while (result > T.Zero);
 #else
+		ulong alphabetLength = (ulong)alphabet.Length;
 		do
 		{
-			id.Insert(0, alphabet[result % alphabet.Length]);
-			result /= alphabet.Length;
+			id.Insert(0, alphabet[(int)(result % alphabetLength)]);
+			result /= alphabetLength;
 		} while (result > 0);
 #endif
 
 		return id.ToString().AsSpan(); // TODO: possibly avoid creating a string
 	}
 
-#if NET7_0_OR_GREATER
 	private static T ToNumber(ReadOnlySpan<char> id, ReadOnlySpan<char> alphabet)
-#else
-	private static int ToNumber(ReadOnlySpan<char> id, ReadOnlySpan<char> alphabet)
-#endif
 	{
 #if NET7_0_OR_GREATER
 		T result = T.Zero;
 		foreach (var character in id)
 			result = result * T.CreateChecked(alphabet.Length) + T.CreateChecked(alphabet.IndexOf(character));
 #else
-		int result = 0;
+		T result = 0;
+		ulong alphabetLength = (ulong)alphabet.Length;
 		foreach (var character in id)
-			result = result * alphabet.Length + alphabet.IndexOf(character);
+			result = result * alphabetLength + (ulong)alphabet.IndexOf(character);
 #endif
 		return result;
 	}
 }
+
