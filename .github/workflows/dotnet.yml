@@ -18,7 +18,7 @@ jobs:
         dotnet-version: [ '8.0.x', '7.0.x', '6.0.x' ]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
       - name: Setup dotnet ${{ matrix.dotnet-version }}
         uses: actions/setup-dotnet@v4
         with:
@@ -28,6 +28,6 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
       - name: Build ${{ matrix.dotnet-version }}
-        run: dotnet build --no-restore
+        run: dotnet build --no-restore --configuration Release
       - name: Test
         run: dotnet test --no-build --verbosity normal --configuration Release
